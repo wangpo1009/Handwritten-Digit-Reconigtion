@@ -96,7 +96,7 @@ bash scripts/monitor_system.sh
 Expected accuracy: ~99% on MNIST test set
 
 ## Author
-Your Name (@wangpo1009)
+
 
 ## License
 MIT License
