@@ -1,63 +1,76 @@
-.PHONY: help install install-dev format lint test train evaluate deploy clean
+# =========================================================
+# Configuration
+# =========================================================
+PYTHON := python
+PIP := uv pip
+APP_NAME := handwritten-digit-recognition
+DOCKER_REGISTRY := your-registry-name# Thay bằng registry của nhóm
 
-help:
-	@echo "Available commands:"
-	@echo "  make install          - Install dependencies"
-	@echo "  make install-dev      - Install dev dependencies"
-	@echo "  make format           - Format code with black and isort"
-	@echo "  make lint             - Run code quality checks"
-	@echo "  make test             - Run unit tests"
-	@echo "  make train            - Train the model"
-	@echo "  make evaluate         - Evaluate model on test set"
-	@echo "  make deploy           - Build and run Docker container"
-	@echo "  make clean            - Clean up generated files"
+# Kiểm tra hệ điều hành để dùng lệnh xóa file phù hợp
+ifeq ($(OS),Windows_NT)
+    RM := rmdir /s /q
+    DELETE := del /f /q
+    PWD_COMMAND := ${CURDIR}
+else
+    RM := rm -rf
+    DELETE := rm -f
+    PWD_COMMAND := $(shell pwd)
+endif
 
-install:
-	pip install -r requirements.txt
+.PHONY: help install install-dev format lint test train evaluate deploy clean monitor retrain
 
-install-dev:
-	pip install -r requirements.txt
-	pip install -r requirements-dev.txt
+# =========================================================
+# Commands
+# =========================================================
 
-format:
+help: ## Hiển thị các lệnh có sẵn
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+
+install: ## Cài đặt dependencies (Production)
+	$(PIP) install -r requirements.txt
+
+install-dev: ## Cài đặt dependencies cho phát triển và kiểm thử
+	$(PIP) install -r requirements-dev.txt
+
+format: ## Tự động định dạng code (Black, Isort)
 	black src/ tests/ notebooks/
 	isort src/ tests/ notebooks/
 
-lint:
-	flake8 src/ tests/
-	pylint src/ tests/
+lint: ## Kiểm tra chất lượng code và kiểu dữ liệu
+	ruff check src/ tests/
+	mypy src/
 
-test:
-	pytest tests/ -v --cov=src --cov-report=html
+test: ## Chạy Unit tests và xuất báo cáo độ bao phủ (Coverage)
+	pytest tests/ -v --cov=src --cov-report=term-missing --cov-report=html
 
-train:
-	python -m src.pipelines.training
+train: ## Huấn luyện mô hình (Dùng biến môi trường từ .env)
+	$(PYTHON) -m src.pipelines.training
 
-evaluate:
-	python -m src.pipelines.evaluation
+evaluate: ## Đánh giá mô hình trên tập Test
+	$(PYTHON) -m src.pipelines.evaluation
 
-monitor:
-	python -m src.monitoring.data_drift
+monitor: ## Kiểm tra Data Drift (Evidently)
+	$(PYTHON) -m src.monitoring.data_drift
 
-retrain:
-	python -m src.pipelines.retraining
+retrain: ## Chạy pipeline tái huấn luyện tự động
+	$(PYTHON) -m src.pipelines.retraining
 
-docker-build:
-	docker build -t handwritten-digit-recognition:latest .
+# --- Docker Ops ---
 
-docker-run:
+docker-build: ## Build Docker Image
+	docker build -t $(APP_NAME):latest .
+
+docker-run: ## Chạy Docker Container với Volume mapping cho Logs và Models
 	docker run -p 8000:8000 \
-		-v $(PWD)/logs:/app/logs \
-		-v $(PWD)/models/saved:/app/models/saved \
-		handwritten-digit-recognition:latest
+		--env-file .env \
+		-v $(PWD_COMMAND)/logs:/app/logs \
+		-v $(PWD_COMMAND)/models/saved:/app/models/saved \
+		$(APP_NAME):latest
 
-docker-push:
-	docker tag handwritten-digit-recognition:latest $(DOCKER_REGISTRY)/handwritten-digit-recognition:latest
-	docker push $(DOCKER_REGISTRY)/handwritten-digit-recognition:latest
+# --- Cleanup ---
 
-clean:
-	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+clean: ## Dọn dẹp cache, log và các file rác
+	@echo "Cleaning up..."
+	$(RM) .pytest_cache .coverage htmlcov .mypy_cache build dist *.egg-info mlruns
+	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete
-	rm -rf build/ dist/ *.egg-info/
-	rm -rf .pytest_cache/ .coverage htmlcov/
-	rm -rf mlruns/ .mlflow/
