@@ -208,7 +208,7 @@ Handwritten-Digit-Reconigtion/
 
 ```
 
-## Quick Start
+## Quick Start for user
 
 ### 1. Setup Environment
 ```bash
