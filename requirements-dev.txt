@@ -1,0 +1,14 @@
+# Lấy các thư viện cơ bản từ file chính
+-r requirements.txt
+
+# --- Kiểm thử (Testing) ---
+pytest>=8.3.0
+pytest-cov>=6.0.0       # Đo độ bao phủ của test case
+
+# --- Định dạng & Kiểm tra code (Linting & Formatting) ---
+black>=25.1.0           # Tự động căn chỉnh code chuẩn PEP8
+ruff>=0.9.0             # Kiểm tra lỗi logic code cực nhanh
+mypy>=1.14.0            # Kiểm tra kiểu dữ liệu (Static type checking)
+
+# --- Tài liệu (Documentation) ---
+mkdocs-material>=9.5.0  # Tạo trang web hướng dẫn sử dụng dự án xịn sò
