@@ -5,7 +5,8 @@ import torch
 from pathlib import Path
 
 # Data file
-DATA_RAW_PATH = Path("data/raw/mnist")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_RAW_PATH = PROJECT_ROOT / "data" / "raw" / "mnist"
 
 def load_images(filepath):
     with open(filepath, "rb") as f:
@@ -28,15 +29,18 @@ def load_mnist():
     return (train_images, train_labels, test_images, test_labels)
 
 class MNISTDataset(Dataset):
-    def __init__(self, images, labels):
+    def __init__(self, images, labels, transform=None):
         self.images = images.astype(np.float32)/255 # Đưa về [0,1]
         self.labels = labels
+        self.transform = transform
 
     def __len__(self):
         return len(self.labels)
     
     def __getitem__(self, idx):
         image = torch.tensor(self.images[idx], dtype = torch.float32).unsqueeze(0)
+        if self.transform is not None:
+            image = self.transform(image)
         label = torch.tensor(self.labels[idx], dtype = torch.long)
         return image, label
         
