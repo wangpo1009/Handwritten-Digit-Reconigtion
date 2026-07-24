@@ -59,6 +59,7 @@ ipython_config.py
 # Environments
 .env
 .venv
+.venv-monitor/
 env/
 venv/
 ENV/
