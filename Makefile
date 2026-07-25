@@ -1,8 +1,15 @@
 # =========================================================
 # Configuration
 # =========================================================
-PYTHON := python
-PIP := uv pip
+PYTHON ?= python3.11
+VENV := .venv
+MONITOR_VENV := .venv-monitor
+VENV_PYTHON := $(VENV)/bin/python
+VENV_PIP := $(VENV_PYTHON) -m pip
+VENV_STAMP := $(VENV)/.requirements-installed
+MONITOR_PYTHON := $(MONITOR_VENV)/bin/python
+MONITOR_PIP := $(MONITOR_PYTHON) -m pip
+MONITOR_STAMP := $(MONITOR_VENV)/.requirements-installed
 APP_NAME := handwritten-digit-recognition
 DOCKER_REGISTRY := your-registry-name# Thay bằng registry của nhóm
 
@@ -17,7 +24,9 @@ else
     PWD_COMMAND := $(shell pwd)
 endif
 
-.PHONY: help install install-dev format lint test train evaluate deploy clean monitor retrain
+.PHONY: help setup setup-monitor setup-all install install-monitor install-dev \
+	format lint test test-monitor train evaluate notebook api monitor \
+	shell monitor-shell retrain clean clean-venvs
 
 # =========================================================
 # Commands
@@ -26,34 +35,74 @@ endif
 help: ## Hiển thị các lệnh có sẵn
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-install: ## Cài đặt dependencies (Production)
-	$(PIP) install -r requirements.txt
+$(VENV_PYTHON):
+	$(PYTHON) -m venv $(VENV)
+	$(VENV_PIP) install --upgrade pip
 
-install-dev: ## Cài đặt dependencies cho phát triển và kiểm thử
-	$(PIP) install -r requirements-dev.txt
+$(MONITOR_PYTHON):
+	$(PYTHON) -m venv $(MONITOR_VENV)
+	$(MONITOR_PIP) install --upgrade pip
+
+$(VENV_STAMP): requirements.txt $(VENV_PYTHON)
+	$(VENV_PIP) install -r requirements.txt
+	@touch $(VENV_STAMP)
+
+$(MONITOR_STAMP): requirements-monitor.txt $(MONITOR_PYTHON)
+	$(MONITOR_PIP) install -r requirements-monitor.txt
+	@touch $(MONITOR_STAMP)
+
+setup: $(VENV_STAMP) ## Tạo .venv và cài môi trường chính
+
+setup-monitor: $(MONITOR_STAMP) ## Tạo .venv-monitor và cài môi trường monitoring
+
+setup-all: setup setup-monitor ## Tạo và cài môi trường setup và monitor
+
+install: setup ## Alias của setup
+
+install-monitor: setup-monitor ## Alias của setup-monitor
+
+install-dev: $(VENV_PYTHON) ## Cài dependencies phát triển vào .venv
+	$(VENV_PIP) install -r requirements-dev.txt
 
 format: ## Tự động định dạng code (Black, Isort)
-	black src/ tests/ notebooks/
-	isort src/ tests/ notebooks/
+	$(VENV_PYTHON) -m black src/ tests/
+	$(VENV_PYTHON) -m isort src/ tests/
 
 lint: ## Kiểm tra chất lượng code và kiểu dữ liệu
-	ruff check src/ tests/
-	mypy src/
+	$(VENV_PYTHON) -m ruff check src/ tests/
+	$(VENV_PYTHON) -m mypy src/
 
 test: ## Chạy Unit tests và xuất báo cáo độ bao phủ (Coverage)
-	pytest tests/ -v --cov=src --cov-report=term-missing --cov-report=html
+	$(VENV_PYTHON) -m pytest tests/ -v --cov=src --cov-report=term-missing --cov-report=html
+
+test-monitor: setup-monitor ## Chạy riêng các test monitoring bằng .venv-monitor
+	$(MONITOR_PYTHON) -m pytest tests/test_monitoring -v
 
 train: ## Huấn luyện mô hình (Dùng biến môi trường từ .env)
-	$(PYTHON) -m src.pipelines.training
+	$(VENV_PYTHON) -m src.pipelines.training
 
 evaluate: ## Đánh giá mô hình trên tập Test
-	$(PYTHON) -m src.pipelines.evaluation
+	$(VENV_PYTHON) -m src.pipelines.evaluation
 
-monitor: ## Kiểm tra Data Drift (Evidently)
-	$(PYTHON) -m src.monitoring.data_drift
+notebook: setup ## Khởi động Jupyter bằng kernel của .venv
+	$(VENV_PYTHON) -m jupyter notebook
+
+api: setup ## Khởi động FastAPI bằng môi trường chính
+	$(VENV_PYTHON) -m uvicorn src.api.main:app --reload
+
+monitor: setup-monitor ## Chạy pipeline Data Drift bằng môi trường monitoring
+	$(MONITOR_PYTHON) -m src.pipelines.monitoring
+
+shell: setup ## Mở shell đã kích hoạt .venv
+	@echo "Đang mở shell của $(VENV). Gõ 'exit' để thoát."
+	@exec $(SHELL) -c '. $(VENV)/bin/activate && exec $(SHELL) -i'
+
+monitor-shell: setup-monitor ## Mở shell đã kích hoạt .venv-monitor
+	@echo "Đang mở shell của $(MONITOR_VENV). Gõ 'exit' để thoát."
+	@exec $(SHELL) -c '. $(MONITOR_VENV)/bin/activate && exec $(SHELL) -i'
 
 retrain: ## Chạy pipeline tái huấn luyện tự động
-	$(PYTHON) -m src.pipelines.retraining
+	$(VENV_PYTHON) -m src.pipelines.retraining
 
 # --- Docker Ops ---
 
@@ -74,3 +123,6 @@ clean: ## Dọn dẹp cache, log và các file rác
 	$(RM) .pytest_cache .coverage htmlcov .mypy_cache build dist *.egg-info mlruns
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete
+
+clean-venvs: ## Xóa cả hai virtual environment
+	$(RM) $(VENV) $(MONITOR_VENV)
